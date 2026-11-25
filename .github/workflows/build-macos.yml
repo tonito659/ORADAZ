@@ -1,0 +1,54 @@
+name: build-macos
+
+# Compile ORADAZ pour macOS via runner hebergé par GitHub.
+# Lancement manuel (onglet Actions -> build-macos -> Run workflow), ou a chaque tag.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: macos-latest          # Apple Silicon, Xcode + clang preinstalls
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build arm64 + x86_64
+        run: |
+          cargo build --release --target aarch64-apple-darwin
+          cargo build --release --target x86_64-apple-darwin
+
+      - name: Binaire universel
+        run: |
+          lipo -create \
+            target/aarch64-apple-darwin/release/oradaz \
+            target/x86_64-apple-darwin/release/oradaz \
+            -output oradaz
+          lipo -info oradaz
+          file oradaz
+
+      - name: Smoke test
+        run: |
+          chmod +x oradaz
+          ./oradaz --version
+          ./oradaz --help > /dev/null
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oradaz-macos-universal
+          path: |
+            oradaz
+            config-oradaz.xml
